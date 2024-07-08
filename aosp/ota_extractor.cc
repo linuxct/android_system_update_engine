@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <future>
 #include <iterator>
 #include <memory>
 
@@ -197,9 +198,17 @@ bool ExtractImagesFromOTA(const DeltaArchiveManifest& manifest,
   const size_t data_begin = metadata.GetMetadataSize() +
                             metadata.GetMetadataSignatureSize() +
                             payload_offset;
+  std::vector<std::future<void>> futures;
+
   for (const auto& partition : manifest.partitions()) {
-    ExtractImageFromPartitions(manifest, partition, data_begin, payload_fd,
-                               input_dir, output_dir, partitions);
+    futures.push_back(
+      std::async(std::launch::async,
+                 ExtractImageFromPartitions, manifest, partition, data_begin, payload_fd,
+                                             input_dir, output_dir, partitions)
+    );
+  }
+  for (auto& fut : futures) {
+    fut.get();
   }
   return true;
 }
