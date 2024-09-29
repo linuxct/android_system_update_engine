@@ -127,8 +127,10 @@ void ExtractImageFromPartitions(const DeltaArchiveManifest& manifest,
     LOG(INFO) << "Incremental OTA detected for partition "
               << partition.partition_name() << " opening source image "
               << input_path;
-    CHECK(in_fd->Open(input_path.c_str(), O_RDONLY))
-        << " failed to open " << input_path;
+    if (!in_fd->Open(input_path.c_str(), O_RDONLY)) {
+        LOG(ERROR) << " failed to open " << input_path << ", skipping it...";
+        return;
+    }
   }
 
   for (const auto& op : partition.operations()) {
@@ -136,8 +138,11 @@ void ExtractImageFromPartitions(const DeltaArchiveManifest& manifest,
       brillo::Blob actual_hash;
       TEST_AND_RETURN(fd_utils::ReadAndHashExtents(
           in_fd, op.src_extents(), manifest.block_size(), &actual_hash));
-      CHECK_EQ(HexEncode(ToStringView(actual_hash)),
-                HexEncode(op.src_sha256_hash()));
+      if (HexEncode(ToStringView(actual_hash)) != HexEncode(op.src_sha256_hash())){
+          LOG(ERROR)    << " Hashes do not match, expected "
+                        << HexEncode(op.src_sha256_hash()) << ", but got "
+                        << HexEncode(ToStringView(actual_hash));
+      }
     }
 
     blob.resize(op.data_length());
@@ -181,11 +186,11 @@ void ExtractImageFromPartitions(const DeltaArchiveManifest& manifest,
   brillo::Blob actual_hash;
   TEST_AND_RETURN(
       HashCalculator::RawHashOfFile(output_path, &actual_hash));
-  CHECK_EQ(HexEncode(ToStringView(actual_hash)),
-            HexEncode(partition.new_partition_info().hash()))
-      << " Partition " << partition.partition_name()
-      << " hash mismatches. Either the source image or OTA package is "
-          "corrupted.";
+  if (HexEncode(ToStringView(actual_hash)) != HexEncode(partition.new_partition_info().hash())){
+      LOG(ERROR)    << " Partition " << partition.partition_name()
+                    << " hash mismatches. Either the source image or OTA package is "
+                    << "corrupted.";
+  }
 }
 
 bool ExtractImagesFromOTA(const DeltaArchiveManifest& manifest,
